@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Training outputs and generated artifacts
+outputs/
+checkpoints/
+checkpoint-*/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+
+# Dataset and model caches
+dataset-cache/
+datasets/
+data/
+.cache/
+huggingface/
+hf_cache/
+
+# Logs and local runtime files
+*.log
+*.jsonl
+*.tmp
+*.bak
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

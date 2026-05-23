@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "predictive-coding-llm"
+version = "0.1.0"
+description = "A predictive-coding-inspired language model training scaffold."
+requires-python = ">=3.10"
+dependencies = [
+  "accelerate>=0.30",
+  "datasets>=2.19",
+  "pyyaml>=6.0",
+  "torch>=2.2",
+  "transformers>=4.41"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,42 @@
+run:
+  output_dir: outputs/pc-llm-4b
+  seed: 42
+
+dataset:
+  name: HuggingFaceFW/fineweb-edu
+  config_name: sample-10BT
+  split: train
+  text_field: text
+  validation_split: null
+  max_length: 2048
+  preprocessing_num_workers: auto
+
+tokenizer:
+  name: gpt2
+
+model:
+  vocab_size: null
+  n_positions: 2048
+  n_embd: 3072
+  n_layer: 32
+  n_head: 24
+  resid_pdrop: 0.0
+  embd_pdrop: 0.0
+  attn_pdrop: 0.0
+  predictive_coding_weight: 0.03
+
+training:
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 64
+  learning_rate: 0.00015
+  weight_decay: 0.1
+  warmup_steps: 2000
+  max_steps: 100000
+  logging_steps: 10
+  eval_steps: 1000
+  save_steps: 1000
+  save_total_limit: 5
+  fp16: false
+  bf16: true
+  gradient_checkpointing: true

@@ -1,0 +1,41 @@
+run:
+  output_dir: outputs/pc-llm-smoke-125m
+  seed: 42
+
+dataset:
+  name: roneneldan/TinyStories
+  split: train[:5%]
+  text_field: text
+  validation_split: validation[:5%]
+  max_length: 256
+  preprocessing_num_workers: auto
+
+tokenizer:
+  name: gpt2
+
+model:
+  vocab_size: null
+  n_positions: 256
+  n_embd: 768
+  n_layer: 12
+  n_head: 12
+  resid_pdrop: 0.1
+  embd_pdrop: 0.1
+  attn_pdrop: 0.1
+  predictive_coding_weight: 0.05
+
+training:
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 8
+  learning_rate: 0.0002
+  weight_decay: 0.1
+  warmup_steps: 100
+  max_steps: 1000
+  logging_steps: 10
+  eval_steps: 100
+  save_steps: 100
+  save_total_limit: 2
+  fp16: false
+  bf16: false
+  gradient_checkpointing: true

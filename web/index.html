@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Predictive Coding LLM Training</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Predictive Coding LLM</h1>
+          <p id="status">Waiting for metrics</p>
+        </div>
+        <div class="badge" id="stepBadge">step 0</div>
+      </header>
+
+      <section class="stats" aria-label="Current metrics">
+        <article>
+          <span>Train loss</span>
+          <strong id="trainLoss">--</strong>
+        </article>
+        <article>
+          <span>Eval loss</span>
+          <strong id="evalLoss">--</strong>
+        </article>
+        <article>
+          <span>LM loss</span>
+          <strong id="lmLoss">--</strong>
+        </article>
+        <article>
+          <span>PC loss</span>
+          <strong id="pcLoss">--</strong>
+        </article>
+      </section>
+
+      <section class="panel controls" aria-label="Training controls">
+        <div class="controlRow">
+          <label>
+            <span>Config</span>
+            <input id="configPath" type="text" value="configs/smoke.yaml" spellcheck="false">
+          </label>
+          <label>
+            <span>Source</span>
+            <select id="datasetSource">
+              <option value="configs/smoke.yaml">TinyStories</option>
+              <option value="configs/kimi-k25-smoke.yaml">KIMI K2.5 50%</option>
+              <option value="configs/4b-int8.yaml">FineWeb Edu 4B</option>
+            </select>
+          </label>
+          <button id="collectDataset" type="button">Collect Dataset</button>
+          <button id="startTrain" type="button">Start Training</button>
+          <button id="stopTrain" type="button" class="danger">Stop</button>
+        </div>
+        <div class="trainingTuning">
+          <label>
+            <span>Train batch</span>
+            <input id="trainBatchSize" type="number" min="1" step="1" placeholder="config">
+          </label>
+          <label>
+            <span>Eval batch</span>
+            <input id="evalBatchSize" type="number" min="1" step="1" placeholder="config">
+          </label>
+          <label>
+            <span>Grad accum</span>
+            <input id="gradientAccumulation" type="number" min="1" step="1" placeholder="config">
+          </label>
+          <label>
+            <span>Epochs</span>
+            <input id="numTrainEpochs" type="number" min="0.01" step="0.25" placeholder="config">
+          </label>
+        </div>
+        <div class="modelScaling">
+          <label>
+            <span>Model size</span>
+            <select id="modelPreset">
+              <option value="config">Config default</option>
+              <option value="toy">16M quick test</option>
+              <option value="small" selected>130M balanced</option>
+              <option value="medium">370M larger</option>
+              <option value="large">780M heavy</option>
+              <option value="xl">1.6B very heavy</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label>
+            <span>Layers</span>
+            <input id="modelLayers" type="number" min="1" step="1" placeholder="config">
+          </label>
+          <label>
+            <span>Hidden</span>
+            <input id="modelHidden" type="number" min="64" step="64" placeholder="config">
+          </label>
+          <label>
+            <span>Heads</span>
+            <input id="modelHeads" type="number" min="1" step="1" placeholder="config">
+          </label>
+          <label>
+            <span>Context</span>
+            <input id="modelContext" type="number" min="32" step="32" placeholder="config">
+          </label>
+          <button id="applyModelScale" type="button" class="secondary">Apply Scale</button>
+        </div>
+        <div class="processStrip">
+          <span id="datasetState">dataset idle</span>
+          <span id="trainState">training idle</span>
+          <span id="checkpointState">checkpoint not saved</span>
+          <span id="actionMessage">ready</span>
+        </div>
+        <div class="datasetProgress" aria-label="Dataset collection progress">
+          <div class="progressMeta">
+            <span id="datasetStage">dataset not started</span>
+            <strong id="datasetPercent">0%</strong>
+          </div>
+          <div class="progressTrack">
+            <div id="datasetBar" class="progressBar"></div>
+          </div>
+          <p id="datasetDetails">No dataset cache yet.</p>
+        </div>
+        <div class="trainingProgress" aria-label="Training progress">
+          <article class="miniProgress">
+            <div class="progressMeta">
+              <span id="stepProgressLabel">run progress</span>
+              <strong id="stepProgressPercent">0%</strong>
+            </div>
+            <div class="progressTrack">
+              <div id="stepProgressBar" class="progressBar trainBar"></div>
+            </div>
+          </article>
+          <article class="miniProgress">
+            <div class="progressMeta">
+              <span id="epochProgressLabel">epoch progress</span>
+              <strong id="epochProgressPercent">0%</strong>
+            </div>
+            <div class="progressTrack">
+              <div id="epochProgressBar" class="progressBar epochBar"></div>
+            </div>
+          </article>
+          <article class="miniProgress">
+            <div class="progressMeta">
+              <span id="passProgressLabel">active pass</span>
+              <strong id="passProgressPercent">0%</strong>
+            </div>
+            <div class="progressTrack">
+              <div id="passProgressBar" class="progressBar passBar"></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel inspector" aria-label="Model inspector">
+        <div class="panelHead">
+          <h2>Model Inspector</h2>
+          <div class="panelActions">
+            <button id="openCompareModal" type="button" class="secondary">Compare Methods</button>
+            <button id="refreshInspector" type="button">Refresh</button>
+          </div>
+        </div>
+        <div class="inspectorStats">
+          <article>
+            <span>Parameters</span>
+            <strong id="parameterCount">--</strong>
+          </article>
+          <article>
+            <span>Int8 size</span>
+            <strong id="int8Size">--</strong>
+          </article>
+          <article>
+            <span>Architecture</span>
+            <strong id="architectureSummary">--</strong>
+          </article>
+        </div>
+        <div class="layerTableWrap">
+          <table class="layerTable">
+            <thead>
+              <tr>
+                <th>Layer</th>
+                <th>Type</th>
+                <th>Shape</th>
+                <th>Params</th>
+              </tr>
+            </thead>
+            <tbody id="layerStack"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panelHead">
+          <h2>Convergence</h2>
+          <div class="legend">
+            <span><i class="train"></i>train</span>
+            <span><i class="eval"></i>eval</span>
+          </div>
+        </div>
+        <canvas id="lossChart" width="1200" height="520" aria-label="Training and evaluation loss chart"></canvas>
+      </section>
+
+      <section class="grid">
+        <article class="panel">
+          <div class="panelHead">
+            <h2>Predictive Coding</h2>
+          </div>
+          <canvas id="pcChart" width="760" height="360" aria-label="Predictive coding auxiliary loss chart"></canvas>
+        </article>
+        <article class="panel">
+          <div class="panelHead">
+            <h2>Run Log</h2>
+          </div>
+          <ol id="eventList" class="events"></ol>
+        </article>
+      </section>
+
+      <section class="grid tester">
+        <article class="panel">
+          <div class="panelHead">
+            <h2>Test LLM</h2>
+          </div>
+          <label class="stacked">
+            <span>Checkpoint</span>
+            <select id="checkpointSelect">
+              <option value="">No checkpoints found</option>
+            </select>
+          </label>
+          <label class="stacked">
+            <span>Prompt</span>
+            <textarea id="promptText" rows="5">Once upon a time</textarea>
+          </label>
+          <div class="controlRow compact">
+            <label>
+              <span>New tokens</span>
+              <input id="maxTokens" type="number" value="80" min="1" max="256">
+            </label>
+            <button id="generateText" type="button">Generate</button>
+          </div>
+          <div class="irmControls">
+            <label class="checkLabel">
+              <input id="useIrm" type="checkbox">
+              <span>IRM</span>
+            </label>
+            <label>
+              <span>Draft passes</span>
+              <input id="irmPasses" type="number" value="2" min="0" max="8">
+            </label>
+            <label>
+              <span>Chunk tokens</span>
+              <input id="chunkTokens" type="number" value="64" min="8" max="256">
+            </label>
+          </div>
+          <pre id="generationOutput" class="output">Train a checkpoint, then test it here.</pre>
+        </article>
+        <article class="panel">
+          <div class="panelHead">
+            <h2>Process Logs</h2>
+          </div>
+          <pre id="processLogs" class="logs">No process output yet.</pre>
+        </article>
+      </section>
+    </main>
+
+    <div id="compareModal" class="modalOverlay" hidden>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="compareTitle">
+        <div class="modalHead">
+          <div>
+            <h2 id="compareTitle">Backpropagation vs Predictive Coding</h2>
+            <p>Two ways to assign credit through a layered language model.</p>
+          </div>
+          <button id="closeCompareModal" type="button" class="iconButton" aria-label="Close comparison">x</button>
+        </div>
+
+        <div class="comparisonGrid">
+          <article class="methodCard backpropCard">
+            <h3>Standard Backpropagation</h3>
+            <div class="flowDiagram" aria-label="Backpropagation flow">
+              <div class="node">Input x</div>
+              <div class="arrow">forward</div>
+              <div class="node">Layers f1...fL</div>
+              <div class="arrow">loss</div>
+              <div class="node">Token CE</div>
+              <div class="returnArrow">global gradient flows backward</div>
+            </div>
+            <div class="equationBlock">
+              <code>h_l = f_l(h_{l-1}; theta_l)</code>
+              <code>L_BP = CE(y, softmax(W h_L))</code>
+              <code>theta_l <- theta_l - eta * dL_BP / dtheta_l</code>
+            </div>
+            <p>Backprop waits for the final token loss, then differentiates that scalar objective through every layer by the chain rule.</p>
+          </article>
+
+          <article class="methodCard pcCard">
+            <h3>Predictive Coding Schema</h3>
+            <div class="flowDiagram" aria-label="Predictive coding flow">
+              <div class="node">Layer h_l</div>
+              <div class="arrow">predicts</div>
+              <div class="node">Next h_{l+1}</div>
+              <div class="arrow">error</div>
+              <div class="node">e_l = h_{l+1} - p_l(h_l)</div>
+              <div class="returnArrow">local prediction errors shape representations</div>
+            </div>
+            <div class="equationBlock">
+              <code>p_l = g_l(h_l; phi_l)</code>
+              <code>L_PC = sum_l mean(||stopgrad(h_{l+1}) - p_l||^2)</code>
+              <code>L_total = L_BP + lambda * L_PC</code>
+            </div>
+            <p>Our current model still uses gradient descent, but adds local hidden-state prediction errors so each layer is pressured to make the next layer easier to predict.</p>
+          </article>
+        </div>
+
+        <div class="compareTakeaway">
+          <strong>Practical difference in this tool</strong>
+          <p>Backprop optimizes the final next-token objective. Predictive coding adds an auxiliary layer-to-layer consistency signal, tracked as PC loss, while LM loss tracks language modeling quality.</p>
+        </div>
+      </section>
+    </div>
+
+    <script src="/app.js?v=irm-generation"></script>
+  </body>
+</html>
