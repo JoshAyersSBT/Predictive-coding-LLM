@@ -101,6 +101,7 @@ class GatedSSMBlock(nn.Module):
 class PredictiveCodingSSMLMHeadModel(PreTrainedModel):
     config_class = PredictiveCodingSSMConfig
     base_model_prefix = "pc_ssm"
+    _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config: PredictiveCodingSSMConfig):
         super().__init__(config)
