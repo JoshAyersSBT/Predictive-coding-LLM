@@ -76,6 +76,8 @@ def main() -> None:
     model_settings["bos_token_id"] = tokenizer.bos_token_id
     model_settings["eos_token_id"] = tokenizer.eos_token_id
     model_settings["pad_token_id"] = tokenizer.pad_token_id
+    if config["training"].get("gradient_checkpointing"):
+        model_settings["use_cache"] = False
 
     output_dir = Path(config["run"]["output_dir"])
     dataset_cache = get_dataset_cache_dir(config)
@@ -90,6 +92,7 @@ def main() -> None:
     model = build_model(config)
 
     if config["training"].get("gradient_checkpointing"):
+        model.config.use_cache = False
         model.gradient_checkpointing_enable()
 
     training_args = build_training_args(config, output_dir)

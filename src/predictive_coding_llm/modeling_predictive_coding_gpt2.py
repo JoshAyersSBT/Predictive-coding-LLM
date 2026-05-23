@@ -13,9 +13,10 @@ class PredictiveCodingGPT2Config(GPT2Config):
     model_type = "predictive-coding-gpt2"
 
     def __init__(self, predictive_coding_weight: float = 0.05, **kwargs):
-        kwargs.setdefault("loss_type", "ForCausalLMLoss")
+        if kwargs.get("loss_type") in (None, ""):
+            kwargs["loss_type"] = "ForCausalLM"
         super().__init__(**kwargs)
-        self.loss_type = self.loss_type or "ForCausalLMLoss"
+        self.loss_type = self.loss_type or "ForCausalLM"
         self.predictive_coding_weight = predictive_coding_weight
 
 

@@ -26,7 +26,8 @@ def main() -> None:
     output = Path(args.output)
 
     print("Dynamic int8 export runs on CPU. Use ROCm/CUDA runtime quantizers for GPU int8 inference.", flush=True)
-    model = PredictiveCodingGPT2LMHeadModel.from_pretrained(checkpoint, map_location="cpu")
+    model = PredictiveCodingGPT2LMHeadModel.from_pretrained(checkpoint)
+    model.to("cpu")
     model.eval()
     quantized = torch.quantization.quantize_dynamic(
         model,
