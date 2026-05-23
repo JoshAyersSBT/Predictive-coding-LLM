@@ -25,8 +25,26 @@ python -m pip install -U pip
 python -m pip install -e .
 ```
 
-For GPU training, install the PyTorch build that matches your CUDA version from
-the official PyTorch instructions before installing this package.
+For GPU training, install the PyTorch build that matches your accelerator before
+installing this package. NVIDIA uses a CUDA build. AMD GPUs use a ROCm build.
+PyTorch exposes ROCm devices through the normal `torch.cuda` API, so the training
+scripts will still report and use a `cuda` device when ROCm is installed.
+
+On Linux with a supported AMD GPU, install a ROCm PyTorch wheel from the official
+PyTorch selector for your ROCm version. Then verify:
+
+```bash
+python - <<'PY'
+import torch
+print(torch.__version__)
+print("hip:", torch.version.hip)
+print("cuda available:", torch.cuda.is_available())
+print("device:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu")
+PY
+```
+
+The configs use `training.precision: auto`. On ROCm/CUDA this selects bf16 when
+PyTorch reports bf16 support, otherwise fp16. On CPU it leaves precision alone.
 
 ## Smoke Test Training
 
@@ -101,6 +119,10 @@ python scripts/export_int8.py --checkpoint outputs/pc-llm-4b/checkpoint-final --
 Dynamic int8 export is useful for CPU inference and artifact size. For GPU int8
 inference, use a serving stack such as bitsandbytes, Quanto, AutoGPTQ, AWQ, or
 the target deployment runtime's quantizer.
+
+`scripts/export_int8.py` performs CPU dynamic quantization. That is not the right
+path for ROCm GPU inference; use a ROCm-compatible inference or quantization
+runtime for GPU-side quantized serving.
 
 ## Predictive Coding Objective
 
