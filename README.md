@@ -34,7 +34,14 @@ python -m pip install -r requirements.txt
 python -m pip install -e .
 ```
 
-For ROCm on Linux, replace the generic PyTorch install with the correct ROCm wheel command from PyTorch, then install the remaining requirements. Verify the GPU:
+For ROCm on Linux, use the ROCm stack instead:
+
+```bash
+python -m pip install -r requirements-rocm.txt
+python -m pip install -e .
+```
+
+`requirements-rocm.txt` uses the PyTorch ROCm wheel index for ROCm 6.4. If your driver/runtime requires a different ROCm wheel family, update the first line to the matching PyTorch index from the official selector before installing. Verify the GPU:
 
 ```bash
 python - <<'PY'
