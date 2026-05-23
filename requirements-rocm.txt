@@ -1,9 +1,12 @@
---index-url https://download.pytorch.org/whl/rocm6.4
---extra-index-url https://pypi.org/simple
-
-torch==2.9.1
-torchvision==0.24.1
-torchaudio==2.9.1
+# Install ROCm PyTorch first, outside this requirements file, so pip can use
+# --no-cache-dir for the very large torch wheel:
+#
+#   python -m pip install --upgrade pip setuptools wheel
+#   python -m pip install --no-cache-dir torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1 --index-url https://download.pytorch.org/whl/rocm6.4
+#   python -m pip install -r requirements-rocm.txt
+#
+# If your ROCm runtime needs another wheel family, replace rocm6.4 with the
+# matching PyTorch ROCm index from the official selector.
 
 accelerate>=0.30
 datasets>=2.19

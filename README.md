@@ -34,14 +34,18 @@ python -m pip install -r requirements.txt
 python -m pip install -e .
 ```
 
-For ROCm on Linux, use the ROCm stack instead:
+For ROCm on Linux, install PyTorch first with `--no-cache-dir`, then install the rest of the stack:
 
 ```bash
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install --no-cache-dir torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1 --index-url https://download.pytorch.org/whl/rocm6.4
 python -m pip install -r requirements-rocm.txt
 python -m pip install -e .
 ```
 
-`requirements-rocm.txt` uses the PyTorch ROCm wheel index for ROCm 6.4. If your driver/runtime requires a different ROCm wheel family, update the first line to the matching PyTorch index from the official selector before installing. Verify the GPU:
+The `--no-cache-dir` flag matters because ROCm PyTorch wheels are very large and can trigger `ValueError: Memoryview is too large` when pip tries to cache/process them. `requirements-rocm.txt` intentionally contains only the non-PyTorch project dependencies.
+
+The command above uses the PyTorch ROCm 6.4 wheel index. If your driver/runtime requires a different ROCm wheel family, replace `rocm6.4` with the matching PyTorch index from the official selector before installing. Verify the GPU:
 
 ```bash
 python - <<'PY'
