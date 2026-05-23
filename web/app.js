@@ -20,6 +20,7 @@ const els = {
   evalBatchSize: document.querySelector("#evalBatchSize"),
   gradientAccumulation: document.querySelector("#gradientAccumulation"),
   numTrainEpochs: document.querySelector("#numTrainEpochs"),
+  modelArchitecture: document.querySelector("#modelArchitecture"),
   modelPreset: document.querySelector("#modelPreset"),
   modelLayers: document.querySelector("#modelLayers"),
   modelHidden: document.querySelector("#modelHidden"),
@@ -264,7 +265,7 @@ function renderModelInspection() {
   const arch = inspection.architecture;
   els.parameterCount.textContent = inspection.parameters.toLocaleString();
   els.int8Size.textContent = `${inspection.int8_size_gb.toFixed(2)} GB`;
-  els.architectureSummary.textContent = `${arch.layers}L / ${arch.hidden}H / ${arch.heads} heads / ctx ${arch.context}`;
+  els.architectureSummary.textContent = `${String(arch.type || "gpt").toUpperCase()} / ${arch.layers}L / ${arch.hidden}H / ${arch.heads} groups / ctx ${arch.context}`;
   els.layerStack.innerHTML = inspection.layer_stack
     .map(
       (layer) =>
@@ -461,9 +462,9 @@ els.modelPreset.addEventListener("change", () => {
   markModelScalePending();
 });
 
-for (const input of [els.modelLayers, els.modelHidden, els.modelHeads, els.modelContext]) {
+for (const input of [els.modelArchitecture, els.modelLayers, els.modelHidden, els.modelHeads, els.modelContext]) {
   input.addEventListener("change", () => {
-    els.modelPreset.value = "custom";
+    if (input !== els.modelArchitecture) els.modelPreset.value = "custom";
     markModelScalePending();
   });
 }
@@ -560,6 +561,7 @@ function trainingOverrides() {
 
 function modelOverrides() {
   return cleanObject({
+    architecture: els.modelArchitecture.value,
     n_layer: numberOrBlank(els.modelLayers.value),
     n_embd: numberOrBlank(els.modelHidden.value),
     n_head: numberOrBlank(els.modelHeads.value),

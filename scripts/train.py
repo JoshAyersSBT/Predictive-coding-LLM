@@ -12,7 +12,7 @@ os.environ.setdefault("USE_FLAX", "0")
 import torch
 from transformers import AutoTokenizer, DataCollatorForLanguageModeling, TrainingArguments
 
-from predictive_coding_llm import PredictiveCodingGPT2Config, PredictiveCodingGPT2LMHeadModel
+from predictive_coding_llm import build_model_from_config
 from predictive_coding_llm.config import load_config
 from predictive_coding_llm.data import (
     dataset_cache_exists,
@@ -27,9 +27,8 @@ from predictive_coding_llm.metrics import JsonlMetricsCallback
 from predictive_coding_llm.trainer import PredictiveCodingTrainer
 
 
-def build_model(config: dict) -> PredictiveCodingGPT2LMHeadModel:
-    model_config = PredictiveCodingGPT2Config(**config["model"])
-    return PredictiveCodingGPT2LMHeadModel(model_config)
+def build_model(config: dict):
+    return build_model_from_config(config["model"])
 
 
 def parse_args() -> argparse.Namespace:
@@ -91,9 +90,12 @@ def main() -> None:
 
     model = build_model(config)
 
-    if config["training"].get("gradient_checkpointing"):
+    if config["training"].get("gradient_checkpointing") and hasattr(model, "gradient_checkpointing_enable"):
         model.config.use_cache = False
-        model.gradient_checkpointing_enable()
+        try:
+            model.gradient_checkpointing_enable()
+        except ValueError:
+            print("Gradient checkpointing is not supported by this architecture; continuing without it.", flush=True)
 
     training_args = build_training_args(config, output_dir)
     metrics_file = output_dir / "metrics.jsonl"

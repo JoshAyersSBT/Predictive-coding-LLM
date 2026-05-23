@@ -13,7 +13,7 @@ if hasattr(sys.stdout, "reconfigure"):
 import torch
 from transformers import AutoTokenizer
 
-from predictive_coding_llm import PredictiveCodingGPT2LMHeadModel
+from predictive_coding_llm import load_model_from_checkpoint
 from predictive_coding_llm.hardware import default_device, print_accelerator_summary
 
 
@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def generate_once(
-    model: PredictiveCodingGPT2LMHeadModel,
+    model,
     tokenizer: AutoTokenizer,
     prompt: str,
     requested_new_tokens: int,
@@ -59,17 +59,43 @@ def generate_once(
             file=sys.stderr,
         )
 
-    with torch.no_grad():
-        output_ids = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=True,
-            temperature=temperature,
-            top_p=top_p,
-            pad_token_id=tokenizer.pad_token_id,
-        )
+    output_ids = sample_tokens(model, inputs["input_ids"], max_new_tokens, temperature=temperature, top_p=top_p)
     completion_ids = output_ids[0][prompt_tokens:]
     return tokenizer.decode(completion_ids, skip_special_tokens=True).strip()
+
+
+def sample_tokens(
+    model,
+    input_ids: torch.Tensor,
+    max_new_tokens: int,
+    *,
+    temperature: float,
+    top_p: float,
+) -> torch.Tensor:
+    max_positions = int(getattr(model.config, "n_positions", 256))
+    generated = input_ids
+    with torch.no_grad():
+        for _ in range(max_new_tokens):
+            context = generated[:, -max_positions:]
+            logits = model(input_ids=context).logits[:, -1, :]
+            logits = logits / max(float(temperature), 1e-5)
+            probs = top_p_probs(torch.softmax(logits, dim=-1), top_p)
+            next_token = torch.multinomial(probs, num_samples=1)
+            generated = torch.cat([generated, next_token], dim=-1)
+    return generated
+
+
+def top_p_probs(probs: torch.Tensor, top_p: float) -> torch.Tensor:
+    top_p = max(0.01, min(float(top_p), 1.0))
+    sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+    cumulative = torch.cumsum(sorted_probs, dim=-1)
+    remove = cumulative > top_p
+    remove[..., 1:] = remove[..., :-1].clone()
+    remove[..., 0] = False
+    sorted_probs = sorted_probs.masked_fill(remove, 0.0)
+    sorted_probs = sorted_probs / sorted_probs.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+    filtered = torch.zeros_like(probs).scatter(dim=-1, index=sorted_indices, src=sorted_probs)
+    return filtered
 
 
 def rolling_tail(tokenizer: AutoTokenizer, text: str, max_tokens: int) -> str:
@@ -106,7 +132,7 @@ def token_trend_summary(tokenizer: AutoTokenizer, text: str) -> str:
 
 
 def generate_with_irm(
-    model: PredictiveCodingGPT2LMHeadModel,
+    model,
     tokenizer: AutoTokenizer,
     prompt: str,
     max_new_tokens: int,
@@ -208,7 +234,7 @@ def main() -> None:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = PredictiveCodingGPT2LMHeadModel.from_pretrained(checkpoint)
+    model = load_model_from_checkpoint(checkpoint)
     model.to(default_device())
     model.eval()
     print_accelerator_summary()

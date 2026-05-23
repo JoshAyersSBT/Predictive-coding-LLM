@@ -10,7 +10,7 @@ os.environ.setdefault("USE_FLAX", "0")
 import torch
 from transformers import AutoTokenizer
 
-from predictive_coding_llm import PredictiveCodingGPT2LMHeadModel
+from predictive_coding_llm import load_model_from_checkpoint
 
 
 def parse_args() -> argparse.Namespace:
@@ -26,7 +26,7 @@ def main() -> None:
     output = Path(args.output)
 
     print("Dynamic int8 export runs on CPU. Use ROCm/CUDA runtime quantizers for GPU int8 inference.", flush=True)
-    model = PredictiveCodingGPT2LMHeadModel.from_pretrained(checkpoint)
+    model = load_model_from_checkpoint(checkpoint)
     model.to("cpu")
     model.eval()
     quantized = torch.quantization.quantize_dynamic(

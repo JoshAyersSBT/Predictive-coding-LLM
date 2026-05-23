@@ -15,6 +15,7 @@ tokenizer:
   name: gpt2
 
 model:
+  architecture: gpt
   vocab_size: null
   n_positions: 2048
   n_embd: 3072

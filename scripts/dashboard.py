@@ -60,7 +60,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._write_json(
                 model_inspection(
                     query.get("config", ["configs/smoke.yaml"])[0],
-                    query_overrides(query, ("n_layer", "n_embd", "n_head", "n_positions")),
+                    query_overrides(query, ("architecture", "n_layer", "n_embd", "n_head", "n_positions")),
                 )
             )
             return
@@ -245,6 +245,14 @@ def apply_model_overrides(loaded: dict, overrides: dict) -> dict:
 
     model = loaded.setdefault("model", {})
     applied = {}
+    architecture = overrides.get("architecture")
+    if architecture not in (None, ""):
+        architecture = str(architecture).lower()
+        if architecture not in {"gpt", "ssm"}:
+            raise ValueError("architecture must be gpt or ssm.")
+        model["architecture"] = architecture
+        applied["model.architecture"] = architecture
+
     integer_fields = {
         "n_layer": "layers",
         "n_embd": "hidden size",
@@ -278,9 +286,11 @@ def scaled_output_dir(loaded: dict) -> str:
     model = loaded["model"]
     vocab_size = int(model.get("vocab_size") or 50257)
     params_m = max(1, round(estimate_parameters(model, vocab_size) / 1_000_000))
+    architecture = architecture_name(model)
     base = Path(loaded["run"]["output_dir"])
     stem = re.sub(r"-\d+m$", "", base.name)
-    return str(Path("outputs") / f"{stem}-{params_m}m")
+    stem = re.sub(r"-(gpt|ssm)$", "", stem)
+    return str(Path("outputs") / f"{stem}-{architecture}-{params_m}m")
 
 
 def start_dataset(body: dict) -> dict:
@@ -349,6 +359,7 @@ def model_inspection(config_path: str, model_overrides: dict | None = None) -> d
     except ValueError as error:
         return {"ok": False, "error": str(error)}
     model = loaded["model"]
+    architecture = architecture_name(model)
     vocab_size = int(model.get("vocab_size") or 50257)
     n_positions = int(model["n_positions"])
     n_embd = int(model["n_embd"])
@@ -372,7 +383,10 @@ def model_inspection(config_path: str, model_overrides: dict | None = None) -> d
         },
     ]
     for index in range(n_layer):
-        layers.extend(transformer_layer_summary(index, n_embd, n_head))
+        if architecture == "ssm":
+            layers.extend(ssm_layer_summary(index, n_embd, n_head, int(model.get("ssm_kernel_size", 4))))
+        else:
+            layers.extend(transformer_layer_summary(index, n_embd, n_head))
     layers.append({"name": "final_layer_norm", "type": "LayerNorm", "shape": str(n_embd), "parameters": 2 * n_embd})
     for index in range(max(n_layer - 1, 0)):
         layers.append(
@@ -395,6 +409,7 @@ def model_inspection(config_path: str, model_overrides: dict | None = None) -> d
             "heads": n_head,
             "context": n_positions,
             "vocab": vocab_size,
+            "type": architecture,
             "predictive_coding_weight": pc_weight,
         },
         "layer_stack": layers,
@@ -432,19 +447,75 @@ def transformer_layer_summary(index: int, n_embd: int, n_head: int) -> list[dict
     ]
 
 
+def ssm_layer_summary(index: int, n_embd: int, n_head: int, kernel_size: int) -> list[dict]:
+    del n_head
+    return [
+        {"name": f"block_{index}.in_norm", "type": "LayerNorm", "shape": str(n_embd), "parameters": 2 * n_embd},
+        {
+            "name": f"block_{index}.in_proj",
+            "type": "Linear gate/value",
+            "shape": f"{n_embd} -> {2 * n_embd}",
+            "parameters": (n_embd * 2 * n_embd) + (2 * n_embd),
+        },
+        {
+            "name": f"block_{index}.depthwise_conv",
+            "type": "Depthwise Conv1d",
+            "shape": f"{n_embd} channels, kernel {kernel_size}",
+            "parameters": (n_embd * kernel_size) + n_embd,
+        },
+        {"name": f"block_{index}.decay", "type": "SSM decay state", "shape": str(n_embd), "parameters": n_embd},
+        {
+            "name": f"block_{index}.out_proj",
+            "type": "Linear",
+            "shape": f"{n_embd} -> {n_embd}",
+            "parameters": (n_embd * n_embd) + n_embd,
+        },
+        {"name": f"block_{index}.ff_norm", "type": "LayerNorm", "shape": str(n_embd), "parameters": 2 * n_embd},
+        {
+            "name": f"block_{index}.ff.fc",
+            "type": "Linear + GELU",
+            "shape": f"{n_embd} -> {4 * n_embd}",
+            "parameters": (n_embd * 4 * n_embd) + (4 * n_embd),
+        },
+        {
+            "name": f"block_{index}.ff.proj",
+            "type": "Linear",
+            "shape": f"{4 * n_embd} -> {n_embd}",
+            "parameters": (4 * n_embd * n_embd) + n_embd,
+        },
+    ]
+
+
 def estimate_parameters(model: dict, vocab_size: int) -> int:
     n_positions = int(model["n_positions"])
     n_embd = int(model["n_embd"])
     n_layer = int(model["n_layer"])
     token_embeddings = vocab_size * n_embd
     position_embeddings = n_positions * n_embd
-    attention = (n_embd * 3 * n_embd) + (3 * n_embd) + (n_embd * n_embd) + n_embd
-    mlp = (n_embd * 4 * n_embd) + (4 * n_embd) + (4 * n_embd * n_embd) + n_embd
-    layer_norms = 4 * n_embd
-    transformer_blocks = n_layer * (attention + mlp + layer_norms)
+    if architecture_name(model) == "ssm":
+        kernel_size = int(model.get("ssm_kernel_size", 4))
+        gated_in = (n_embd * 2 * n_embd) + (2 * n_embd)
+        conv = (n_embd * kernel_size) + n_embd
+        decay = n_embd
+        out = (n_embd * n_embd) + n_embd
+        mlp = (n_embd * 4 * n_embd) + (4 * n_embd) + (4 * n_embd * n_embd) + n_embd
+        layer_norms = 4 * n_embd
+        blocks = n_layer * (gated_in + conv + decay + out + mlp + layer_norms)
+    else:
+        attention = (n_embd * 3 * n_embd) + (3 * n_embd) + (n_embd * n_embd) + n_embd
+        mlp = (n_embd * 4 * n_embd) + (4 * n_embd) + (4 * n_embd * n_embd) + n_embd
+        layer_norms = 4 * n_embd
+        blocks = n_layer * (attention + mlp + layer_norms)
     final_layer_norm = 2 * n_embd
     pc_predictors = max(n_layer - 1, 0) * ((n_embd * n_embd) + (2 * n_embd))
-    return token_embeddings + position_embeddings + transformer_blocks + final_layer_norm + pc_predictors
+    return token_embeddings + position_embeddings + blocks + final_layer_norm + pc_predictors
+
+
+def architecture_name(model: dict) -> str:
+    value = str(model.get("architecture") or model.get("model_type") or "gpt").lower()
+    if value in {"predictive-coding-ssm", "ssm", "state-space", "state_space"}:
+        return "ssm"
+    return "gpt"
 
 
 def stop_process(name: str) -> dict:
