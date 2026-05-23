@@ -65,7 +65,8 @@ def generate_once(
             top_p=top_p,
             pad_token_id=tokenizer.pad_token_id,
         )
-    return tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    completion_ids = output_ids[0][prompt_tokens:]
+    return tokenizer.decode(completion_ids, skip_special_tokens=True).strip()
 
 
 def rolling_tail(tokenizer: AutoTokenizer, text: str, max_tokens: int) -> str:
@@ -73,10 +74,6 @@ def rolling_tail(tokenizer: AutoTokenizer, text: str, max_tokens: int) -> str:
     if len(ids) <= max_tokens:
         return text
     return tokenizer.decode(ids[-max_tokens:], skip_special_tokens=True)
-
-
-def strip_prompt_prefix(prompt: str, generated: str) -> str:
-    return generated[len(prompt) :].lstrip() if generated.startswith(prompt) else generated.strip()
 
 
 def generate_with_irm(
@@ -93,30 +90,61 @@ def generate_with_irm(
 
     for index in range(max(0, passes)):
         draft_prompt = (
-            f"{prompt}\n\n"
-            f"[IRM private draft {index + 1}] Build a compact internal plan, constraints, and likely answer. "
-            "Do not write the final answer yet.\n"
-            f"{scratch}"
+            "system: Private planning pass. Use the user request as the only task.\n"
+            f"user: {prompt}\n"
+            "assistant: Draft concise implementation notes. Do not answer a different task.\n"
+            f"Prior notes: {scratch}\n"
+            "Notes:"
         )
         draft = generate_once(model, tokenizer, draft_prompt, min(chunk_tokens, max_new_tokens), temperature=0.7, top_p=0.9)
-        scratch = rolling_tail(tokenizer, strip_prompt_prefix(draft_prompt, draft), context_budget // 2)
+        scratch = rolling_tail(tokenizer, draft, context_budget // 2)
 
     visible = ""
     remaining = max(1, max_new_tokens)
     while remaining > 0:
         next_tokens = min(chunk_tokens, remaining)
-        context = rolling_tail(tokenizer, f"{prompt}\n\n{scratch}\n\n{visible}", context_budget)
+        visible_tail = rolling_tail(tokenizer, visible, max(8, context_budget // 2))
+        notes_tail = rolling_tail(tokenizer, scratch, max(8, context_budget // 4))
         final_prompt = (
-            f"{context}\n\n"
-            "[IRM final] Continue the visible answer only. Do not include private draft notes.\n"
+            "system: Answer the user request directly. Stay on task. Do not quote private notes.\n"
+            f"user: {prompt}\n"
+            f"assistant: {visible_tail}\n"
+            f"Private notes summary, do not quote: {notes_tail}\n"
+            "assistant:"
         )
         chunk = generate_once(model, tokenizer, final_prompt, next_tokens, temperature=0.8, top_p=0.95)
-        piece = strip_prompt_prefix(final_prompt, chunk)
+        piece = clean_irm_output(chunk)
+        if not piece:
+            break
         visible = f"{visible} {piece}".strip()
         remaining -= next_tokens
         if piece.endswith((".", "!", "?", "\n")) and remaining <= chunk_tokens:
             break
     return visible
+
+
+def clean_irm_output(text: str) -> str:
+    blocked_prefixes = (
+        "private planning",
+        "private notes",
+        "notes:",
+        "user request:",
+        "user:",
+        "system:",
+        "assistant:",
+        "visible answer",
+        "continue the visible answer",
+    )
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            lines.append("")
+            continue
+        if any(stripped.lower().startswith(prefix) for prefix in blocked_prefixes):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
 
 
 def main() -> None:
@@ -132,10 +160,17 @@ def main() -> None:
     if args.irm:
         text = generate_with_irm(model, tokenizer, args.prompt, args.max_new_tokens, args.irm_passes, args.chunk_tokens)
     else:
-        text = generate_once(model, tokenizer, args.prompt, args.max_new_tokens)
+        text = generate_once(model, tokenizer, format_user_prompt(args.prompt), args.max_new_tokens)
 
     sys.stdout.write(text)
     sys.stdout.write("\n")
+
+
+def format_user_prompt(prompt: str) -> str:
+    stripped = prompt.strip()
+    if stripped.lower().startswith(("user:", "system:", "assistant:")):
+        return stripped
+    return f"user: {stripped}\nassistant:"
 
 
 if __name__ == "__main__":
