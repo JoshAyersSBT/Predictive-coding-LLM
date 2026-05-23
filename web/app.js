@@ -34,6 +34,7 @@ const els = {
   promptText: document.querySelector("#promptText"),
   maxTokens: document.querySelector("#maxTokens"),
   useIrm: document.querySelector("#useIrm"),
+  useContextFuzzer: document.querySelector("#useContextFuzzer"),
   irmPasses: document.querySelector("#irmPasses"),
   chunkTokens: document.querySelector("#chunkTokens"),
   generationOutput: document.querySelector("#generationOutput"),
@@ -503,6 +504,7 @@ els.generateText.addEventListener("click", async () => {
       prompt: els.promptText.value,
       max_new_tokens: Number(els.maxTokens.value),
       irm: els.useIrm.checked,
+      context_fuzzer: els.useContextFuzzer.checked,
       irm_passes: Number(els.irmPasses.value),
       chunk_tokens: Number(els.chunkTokens.value),
     });

@@ -544,6 +544,7 @@ def generate_text(body: dict) -> dict:
 
     max_new_tokens = str(int(body.get("max_new_tokens", 80)))
     use_irm = bool(body.get("irm", False))
+    use_context_fuzzer = bool(body.get("context_fuzzer", False))
     irm_passes = str(max(0, int(body.get("irm_passes", 2))))
     chunk_tokens = str(max(1, int(body.get("chunk_tokens", 64))))
     env = os.environ.copy()
@@ -564,6 +565,8 @@ def generate_text(body: dict) -> dict:
     ]
     if use_irm:
         command.extend(["--irm", "--irm-passes", irm_passes, "--chunk-tokens", chunk_tokens])
+        if use_context_fuzzer:
+            command.append("--context-fuzzer")
 
     result = subprocess.run(
         command,

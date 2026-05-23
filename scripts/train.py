@@ -22,6 +22,7 @@ from predictive_coding_llm.data import (
     load_tokenized_cache,
     tokenize_for_causal_lm,
 )
+from predictive_coding_llm.hardware import print_accelerator_summary, resolve_auto_precision
 from predictive_coding_llm.metrics import JsonlMetricsCallback
 from predictive_coding_llm.trainer import PredictiveCodingTrainer
 
@@ -39,6 +40,7 @@ def parse_args() -> argparse.Namespace:
 
 def build_training_args(config: dict, output_dir: Path) -> TrainingArguments:
     training_config = dict(config["training"])
+    resolve_auto_precision(training_config)
     if not torch.cuda.is_available():
         training_config.setdefault("dataloader_pin_memory", False)
 
@@ -63,6 +65,7 @@ def build_training_args(config: dict, output_dir: Path) -> TrainingArguments:
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
+    print_accelerator_summary()
 
     tokenizer = AutoTokenizer.from_pretrained(config["tokenizer"]["name"])
     if tokenizer.pad_token is None:
